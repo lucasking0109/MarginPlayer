@@ -29,9 +29,10 @@ export async function GET(request: Request) {
   }
 
   if (toFetch.length > 0) {
-    // Fetch each symbol individually using Yahoo chart API
     const fetches = toFetch.map(async (sym) => {
-      const price = await fetchYahooChart(sym);
+      // Try Yahoo chart first, then Google Finance scrape
+      const price =
+        (await fetchYahooChart(sym)) ?? (await fetchGoogleFinance(sym));
       if (price !== null) {
         results[sym] = price;
         cache.set(sym, { price, ts: Date.now() });
@@ -43,37 +44,73 @@ export async function GET(request: Request) {
   return NextResponse.json(results);
 }
 
+// Exchanges for Google Finance URL
+const EXCHANGE_MAP: Record<string, string> = {
+  AAPL: "NASDAQ",  MSFT: "NASDAQ",  GOOGL: "NASDAQ", GOOG: "NASDAQ",
+  AMZN: "NASDAQ",  META: "NASDAQ",  NVDA: "NASDAQ",  TSLA: "NASDAQ",
+  AMD: "NASDAQ",   INTC: "NASDAQ",  NFLX: "NASDAQ",  PYPL: "NASDAQ",
+  COST: "NASDAQ",  AVGO: "NASDAQ",  ADBE: "NASDAQ",  CRM: "NASDAQ",
+  QCOM: "NASDAQ",  INTU: "NASDAQ",  AMAT: "NASDAQ",  MU: "NASDAQ",
+  MRVL: "NASDAQ",  LRCX: "NASDAQ",  KLAC: "NASDAQ",  SNPS: "NASDAQ",
+  CDNS: "NASDAQ",  CRWD: "NASDAQ",  PANW: "NASDAQ",  DDOG: "NASDAQ",
+  ZS: "NASDAQ",    MELI: "NASDAQ",  BKNG: "NASDAQ",  ABNB: "NASDAQ",
+  COIN: "NASDAQ",  PLTR: "NASDAQ",  MSTR: "NASDAQ",  SMCI: "NASDAQ",
+  ARM: "NASDAQ",   SOFI: "NASDAQ",  RIVN: "NASDAQ",  LCID: "NASDAQ",
+};
+
+function getExchange(symbol: string): string {
+  return EXCHANGE_MAP[symbol] || "NYSE";
+}
+
 async function fetchYahooChart(symbol: string): Promise<number | null> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
-
     const res = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "application/json",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       },
-      next: { revalidate: 60 },
     });
 
-    if (!res.ok) {
-      console.error(`Yahoo chart API ${symbol}: ${res.status}`);
-      return null;
-    }
+    if (!res.ok) return null;
 
     const data = await res.json();
     const meta = data?.chart?.result?.[0]?.meta;
+    const price = meta?.regularMarketPrice ?? meta?.previousClose;
 
-    const price =
-      meta?.regularMarketPrice ?? meta?.previousClose ?? null;
+    return typeof price === "number" && price > 0
+      ? Math.round(price * 100) / 100
+      : null;
+  } catch {
+    return null;
+  }
+}
 
-    if (typeof price === "number" && price > 0) {
-      return Math.round(price * 100) / 100;
+async function fetchGoogleFinance(symbol: string): Promise<number | null> {
+  try {
+    const exchange = getExchange(symbol);
+    const url = `https://www.google.com/finance/quote/${symbol}:${exchange}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    if (!res.ok) return null;
+
+    const html = await res.text();
+
+    // Extract price from data-last-price attribute
+    const match = html.match(/data-last-price="([\d.]+)"/);
+    if (match?.[1]) {
+      const price = parseFloat(match[1]);
+      if (price > 0) return Math.round(price * 100) / 100;
     }
 
     return null;
-  } catch (e) {
-    console.error(`Yahoo chart error for ${symbol}:`, e);
+  } catch {
     return null;
   }
 }
