@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const { positions, loaded: posLoaded, updatePrices } = usePositions();
   const { account, loaded: accLoaded } = useAccount();
   const { getSummary } = useTrades();
-  const { fetchPrices, loading: priceLoading, lastUpdated } = useStockPrices();
+  const { fetchPrices, loading: priceLoading, lastUpdated, error: priceError, lastResult } = useStockPrices();
 
   if (!posLoaded || !accLoaded) {
     return (
@@ -69,6 +69,17 @@ export default function DashboardPage() {
         <p className="text-xs text-gray-600">
           Last updated: {lastUpdated.toLocaleTimeString()}
         </p>
+      )}
+
+      {priceError && (
+        <div className="p-3 rounded-lg bg-loss/10 border border-loss/30 text-sm text-loss">
+          Price fetch failed: {priceError}
+        </div>
+      )}
+      {lastResult && !priceError && (
+        <div className="p-3 rounded-lg bg-profit/10 border border-profit/30 text-sm text-profit">
+          {lastResult}
+        </div>
       )}
 
       {positions.length === 0 ? (

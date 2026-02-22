@@ -26,7 +26,7 @@ export default function PortfolioPage() {
     importPositions,
   } = usePositions();
   const { account, setAccount } = useAccount();
-  const { fetchPrices, loading: priceLoading } = useStockPrices();
+  const { fetchPrices, loading: priceLoading, error: priceError, lastResult } = useStockPrices();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showAdd, setShowAdd] = useState(false);
@@ -122,6 +122,18 @@ export default function PortfolioPage() {
           </button>
         </div>
       </div>
+
+      {/* Price Refresh Status */}
+      {priceError && (
+        <div className="p-3 rounded-lg bg-loss/10 border border-loss/30 text-sm text-loss">
+          Price fetch failed: {priceError}
+        </div>
+      )}
+      {lastResult && !priceError && (
+        <div className="p-3 rounded-lg bg-profit/10 border border-profit/30 text-sm text-profit">
+          {lastResult}
+        </div>
+      )}
 
       {/* Account Settings */}
       {showSettings && (
