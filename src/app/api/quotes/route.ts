@@ -29,95 +29,51 @@ export async function GET(request: Request) {
   }
 
   if (toFetch.length > 0) {
-    const fetched = await fetchYahooV8(toFetch);
-    if (fetched) {
-      Object.assign(results, fetched);
-    }
+    // Fetch each symbol individually using Yahoo chart API
+    const fetches = toFetch.map(async (sym) => {
+      const price = await fetchYahooChart(sym);
+      if (price !== null) {
+        results[sym] = price;
+        cache.set(sym, { price, ts: Date.now() });
+      }
+    });
+    await Promise.all(fetches);
   }
 
   return NextResponse.json(results);
 }
 
-// Use Yahoo Finance v8 API directly (no npm package needed)
-async function fetchYahooV8(
-  symbols: string[],
-): Promise<Record<string, number> | null> {
+async function fetchYahooChart(symbol: string): Promise<number | null> {
   try {
-    const symbolStr = symbols.join(",");
-    const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${symbolStr}&range=1d&interval=1d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
 
     const res = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json",
       },
+      next: { revalidate: 60 },
     });
 
     if (!res.ok) {
-      console.error(`Yahoo v8 API error: ${res.status}`);
+      console.error(`Yahoo chart API ${symbol}: ${res.status}`);
       return null;
     }
 
     const data = await res.json();
-    const results: Record<string, number> = {};
+    const meta = data?.chart?.result?.[0]?.meta;
 
-    for (const sym of symbols) {
-      const spark = data?.spark?.result?.find(
-        (r: Record<string, unknown>) => r.symbol === sym,
-      );
-      const close =
-        spark?.response?.[0]?.meta?.regularMarketPrice ??
-        spark?.response?.[0]?.meta?.previousClose;
+    const price =
+      meta?.regularMarketPrice ?? meta?.previousClose ?? null;
 
-      if (close && typeof close === "number" && close > 0) {
-        results[sym] = close;
-        cache.set(sym, { price: close, ts: Date.now() });
-      }
+    if (typeof price === "number" && price > 0) {
+      return Math.round(price * 100) / 100;
     }
 
-    if (Object.keys(results).length > 0) return results;
-
-    // Fallback: try v6 quote endpoint
-    return await fetchYahooV6(symbols);
+    return null;
   } catch (e) {
-    console.error("Yahoo v8 error:", e);
-    return await fetchYahooV6(symbols);
-  }
-}
-
-async function fetchYahooV6(
-  symbols: string[],
-): Promise<Record<string, number> | null> {
-  try {
-    const symbolStr = symbols.join(",");
-    const url = `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${symbolStr}`;
-
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-    });
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const results: Record<string, number> = {};
-
-    const quotes = data?.quoteResponse?.result || [];
-    for (const q of quotes) {
-      if (q?.symbol && q?.regularMarketPrice) {
-        results[q.symbol] = q.regularMarketPrice;
-        cache.set(q.symbol, {
-          price: q.regularMarketPrice,
-          ts: Date.now(),
-        });
-      }
-    }
-
-    return Object.keys(results).length > 0 ? results : null;
-  } catch (e) {
-    console.error("Yahoo v6 error:", e);
+    console.error(`Yahoo chart error for ${symbol}:`, e);
     return null;
   }
 }
