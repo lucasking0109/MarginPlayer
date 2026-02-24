@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Briefcase, TrendingUp, Menu, X } from "lucide-react";
+import { LayoutDashboard, Briefcase, TrendingUp, Target, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portfolio", label: "Portfolio", icon: Briefcase },
   { href: "/trading", label: "Day Trading", icon: TrendingUp },
+  { href: "/options", label: "Options", icon: Target },
 ];
 
 export function NavSidebar() {

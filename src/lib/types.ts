@@ -60,3 +60,40 @@ export interface DayTradeSummary {
   largestLoss: number;
   dayTradesLast5Days: number;
 }
+
+// ===== Options Types =====
+
+export interface OptionPosition {
+  id: string;
+  symbol: string;
+  optionType: "call" | "put";
+  strike: number;
+  expiration: string; // YYYY-MM-DD
+  premium: number;
+  quantity: number; // positive=long, negative=short
+  currentPrice: number;
+  underlyingPrice: number;
+  delta: number;
+}
+
+export interface OptionsSummary {
+  totalNotional: number;
+  netDelta: number;
+  totalPremiumPaid: number;
+  totalCurrentValue: number;
+  totalPnl: number;
+}
+
+export interface PnlDataPoint {
+  underlyingPrice: number;
+  pnl: number;
+  label?: string;
+}
+
+export interface OptionLeverage {
+  leverageRatio: number;
+  notionalExposure: number;
+  breakEvenPrice: number;
+  maxLoss: number;
+  deltaExposure: number;
+}
