@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { Camera, Loader2 } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Clipboard, Loader2 } from "lucide-react";
 
 interface ScreenshotUploadProps {
   onPositionsExtracted: (
@@ -23,8 +23,8 @@ export function ScreenshotUpload({
 }: ScreenshotUploadProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const processImage = useCallback(
     async (file: File) => {
@@ -38,6 +38,8 @@ export function ScreenshotUpload({
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
+
+        setPreview(base64);
 
         const res = await fetch("/api/ocr", {
           method: "POST",
@@ -57,6 +59,7 @@ export function ScreenshotUpload({
         }
 
         onPositionsExtracted(data.positions);
+        setPreview(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to process image");
       } finally {
@@ -66,60 +69,53 @@ export function ScreenshotUpload({
     [onPositionsExtracted],
   );
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith("image/")) {
-        processImage(file);
-      }
-    },
-    [processImage],
-  );
+  // Global paste listener
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      if (loading) return;
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        processImage(file);
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            processImage(file);
+          }
+          return;
+        }
       }
-    },
-    [processImage],
-  );
+    }
+
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [processImage, loading]);
 
   return (
     <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-      onClick={() => fileInputRef.current?.click()}
-      className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
-        dragOver
-          ? "border-blue-500 bg-blue-500/10"
-          : "border-border hover:border-gray-500"
-      }`}
+      ref={containerRef}
+      className="border-2 border-dashed rounded-xl p-6 text-center transition-all border-border hover:border-gray-500"
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        className="hidden"
-      />
-
       {loading ? (
-        <div className="flex flex-col items-center gap-2 text-gray-400">
+        <div className="flex flex-col items-center gap-3 text-gray-400">
+          {preview && (
+            <img
+              src={preview}
+              alt="Uploaded screenshot"
+              className="max-h-32 rounded-lg opacity-60"
+            />
+          )}
           <Loader2 className="w-8 h-8 animate-spin" />
           <p className="text-sm">Analyzing screenshot...</p>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2 text-gray-400">
-          <Camera className="w-8 h-8" />
-          <p className="text-sm">Upload screenshot or drag & drop</p>
+          <Clipboard className="w-8 h-8" />
+          <p className="text-sm">
+            Screenshot then <kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-xs font-mono">Cmd+V</kbd> to paste
+          </p>
           <p className="text-xs text-gray-500">
             Schwab options positions screenshot
           </p>
