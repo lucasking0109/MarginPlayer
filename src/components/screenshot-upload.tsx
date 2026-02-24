@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { Clipboard, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Clipboard, Loader2, Lock } from "lucide-react";
+
+const PIN_STORAGE_KEY = "mp-ocr-pin";
 
 interface ScreenshotUploadProps {
   onPositionsExtracted: (
@@ -24,10 +26,31 @@ export function ScreenshotUpload({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [pin, setPin] = useState("");
+  const [pinSaved, setPinSaved] = useState(false);
+
+  // Load saved PIN from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(PIN_STORAGE_KEY);
+    if (saved) {
+      setPin(saved);
+      setPinSaved(true);
+    }
+  }, []);
+
+  const savePin = useCallback((value: string) => {
+    setPin(value);
+    localStorage.setItem(PIN_STORAGE_KEY, value);
+    setPinSaved(true);
+  }, []);
 
   const processImage = useCallback(
     async (file: File) => {
+      if (!pin) {
+        setError("Please enter your PIN first.");
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
@@ -44,12 +67,18 @@ export function ScreenshotUpload({
         const res = await fetch("/api/ocr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: base64 }),
+          body: JSON.stringify({ image: base64, pin }),
         });
 
         const data = await res.json();
 
         if (!res.ok) {
+          if (data.code === "INVALID_PIN") {
+            localStorage.removeItem(PIN_STORAGE_KEY);
+            setPinSaved(false);
+            setPin("");
+            throw new Error("Invalid PIN. Please try again.");
+          }
           throw new Error(data.error || "OCR failed");
         }
 
@@ -66,7 +95,7 @@ export function ScreenshotUpload({
         setLoading(false);
       }
     },
-    [onPositionsExtracted],
+    [onPositionsExtracted, pin],
   );
 
   // Global paste listener
@@ -93,11 +122,42 @@ export function ScreenshotUpload({
     return () => document.removeEventListener("paste", handlePaste);
   }, [processImage, loading]);
 
+  // PIN input view
+  if (!pinSaved) {
+    return (
+      <div className="border-2 border-dashed rounded-xl p-6 text-center transition-all border-border">
+        <div className="flex flex-col items-center gap-3">
+          <Lock className="w-8 h-8 text-gray-500" />
+          <p className="text-sm text-gray-400">Enter PIN to enable OCR</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (pin.trim()) savePin(pin.trim());
+            }}
+            className="flex gap-2"
+          >
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="PIN"
+              className="w-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm text-white text-center placeholder-gray-600 focus:outline-none focus:border-gray-500"
+              aria-label="OCR access PIN"
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-sm rounded-lg transition-colors"
+            >
+              Save
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className="border-2 border-dashed rounded-xl p-6 text-center transition-all border-border hover:border-gray-500"
-    >
+    <div className="border-2 border-dashed rounded-xl p-6 text-center transition-all border-border hover:border-gray-500">
       {loading ? (
         <div className="flex flex-col items-center gap-3 text-gray-400">
           {preview && (
@@ -114,7 +174,11 @@ export function ScreenshotUpload({
         <div className="flex flex-col items-center gap-2 text-gray-400">
           <Clipboard className="w-8 h-8" />
           <p className="text-sm">
-            Screenshot then <kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-xs font-mono">Cmd+V</kbd> to paste
+            Screenshot then{" "}
+            <kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-xs font-mono">
+              Cmd+V
+            </kbd>{" "}
+            to paste
           </p>
           <p className="text-xs text-gray-500">
             Schwab options positions screenshot

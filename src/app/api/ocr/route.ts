@@ -38,9 +38,24 @@ export async function POST(request: Request) {
     );
   }
 
+  const accessPin = process.env.OCR_ACCESS_PIN;
+  if (!accessPin) {
+    return NextResponse.json(
+      { error: "OCR_ACCESS_PIN not configured" },
+      { status: 500 },
+    );
+  }
+
   try {
     const body = await request.json();
-    const { image } = body as { image: string };
+    const { image, pin } = body as { image: string; pin: string };
+
+    if (!pin || pin !== accessPin) {
+      return NextResponse.json(
+        { error: "Unauthorized", code: "INVALID_PIN" },
+        { status: 401 },
+      );
+    }
 
     if (!image) {
       return NextResponse.json(
